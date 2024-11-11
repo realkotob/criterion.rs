@@ -31,9 +31,9 @@ pub fn line_comparison(
     let (unit, series_data) = line_comparison_series_data(formatter, all_curves);
 
     let x_range =
-        plotters::data::fitting_range(series_data.iter().map(|(_, xs, _)| xs.iter()).flatten());
+        plotters::data::fitting_range(series_data.iter().flat_map(|(_, xs, _)| xs.iter()));
     let y_range =
-        plotters::data::fitting_range(series_data.iter().map(|(_, _, ys)| ys.iter()).flatten());
+        plotters::data::fitting_range(series_data.iter().flat_map(|(_, _, ys)| ys.iter()));
     let root_area = SVGBackend::new(&path, SIZE)
         .into_drawing_area()
         .titled(&format!("{}: Comparison", title), (DEFAULT_FONT, 20))
@@ -41,7 +41,7 @@ pub fn line_comparison(
 
     match axis_scale {
         AxisScale::Linear => {
-            draw_line_comarision_figure(root_area, unit, x_range, y_range, value_type, series_data)
+            draw_line_comarision_figure(root_area, unit, x_range, y_range, value_type, series_data);
         }
         AxisScale::Logarithmic => draw_line_comarision_figure(
             root_area,
@@ -86,18 +86,17 @@ fn draw_line_comarision_figure<XR: AsRangedCoord<Value = f64>, YR: AsRangedCoord
         .draw()
         .unwrap();
 
-    for (id, (name, xs, ys)) in (0..).zip(data.into_iter()) {
+    for (id, (name, xs, ys)) in (0..).zip(data) {
         let series = chart
             .draw_series(
                 LineSeries::new(
-                    xs.into_iter().zip(ys.into_iter()),
+                    xs.into_iter().zip(ys),
                     COMPARISON_COLORS[id % NUM_COLORS].filled(),
                 )
                 .point_size(POINT_SIZE),
             )
             .unwrap();
         if let Some(name) = name {
-            let name: &str = &*name;
             series.label(name).legend(move |(x, y)| {
                 Rectangle::new(
                     [(x, y - 5), (x + 20, y + 5)],
@@ -121,8 +120,8 @@ fn line_comparison_series_data<'a>(
 ) -> (&'static str, Vec<(Option<&'a String>, Vec<f64>, Vec<f64>)>) {
     let max = all_curves
         .iter()
-        .map(|&&(_, ref data)| Sample::new(data).mean())
-        .fold(::std::f64::NAN, f64::max);
+        .map(|&(_, data)| Sample::new(data).mean())
+        .fold(f64::NAN, f64::max);
 
     let mut dummy = [1.0];
     let unit = formatter.scale_values(max, &mut dummy);
@@ -132,7 +131,7 @@ fn line_comparison_series_data<'a>(
     // This assumes the curves are sorted. It also assumes that the benchmark IDs all have numeric
     // values or throughputs and that value is sensible (ie. not a mix of bytes and elements
     // or whatnot)
-    for (key, group) in &all_curves.iter().group_by(|&&&(id, _)| &id.function_id) {
+    for (key, group) in &all_curves.iter().chunk_by(|&&&(id, _)| &id.function_id) {
         let mut tuples: Vec<_> = group
             .map(|&&(id, ref sample)| {
                 // Unwrap is fine here because it will only fail if the assumptions above are not true
@@ -160,7 +159,7 @@ pub fn violin(
     axis_scale: AxisScale,
 ) {
     let all_curves_vec = all_curves.iter().rev().cloned().collect::<Vec<_>>();
-    let all_curves: &[&(&BenchmarkId, Vec<f64>)] = &*all_curves_vec;
+    let all_curves: &[&(&BenchmarkId, Vec<f64>)] = &all_curves_vec;
 
     let mut kdes = all_curves
         .iter()
@@ -177,7 +176,7 @@ pub fn violin(
 
     let mut xs = kdes
         .iter()
-        .flat_map(|&(_, ref x, _)| x.iter())
+        .flat_map(|(_, x, _)| x.iter())
         .filter(|&&x| x > 0.);
     let (mut min, mut max) = {
         let &first = xs.next().unwrap();
@@ -196,8 +195,7 @@ pub fn violin(
         formatter.scale_values(max, xs);
     });
 
-    let mut x_range =
-        plotters::data::fitting_range(kdes.iter().map(|(_, xs, _)| xs.iter()).flatten());
+    let mut x_range = plotters::data::fitting_range(kdes.iter().flat_map(|(_, xs, _)| xs.iter()));
     x_range.start = 0.0;
     let y_range = -0.5..all_curves.len() as f64 - 0.5;
 
@@ -211,7 +209,7 @@ pub fn violin(
     match axis_scale {
         AxisScale::Linear => draw_violin_figure(root_area, unit, x_range, y_range, kdes),
         AxisScale::Logarithmic => {
-            draw_violin_figure(root_area, unit, x_range.log_scale(), y_range, kdes)
+            draw_violin_figure(root_area, unit, x_range.log_scale(), y_range, kdes);
         }
     }
 }
@@ -252,7 +250,7 @@ fn draw_violin_figure<XR: AsRangedCoord<Value = f64>, YR: AsRangedCoord<Value = 
             .draw_series(AreaSeries::new(
                 x.iter().zip(y.iter()).map(|(x, y)| (*x, base + *y / 2.0)),
                 base,
-                &DARK_BLUE,
+                DARK_BLUE,
             ))
             .unwrap();
 
@@ -260,7 +258,7 @@ fn draw_violin_figure<XR: AsRangedCoord<Value = f64>, YR: AsRangedCoord<Value = 
             .draw_series(AreaSeries::new(
                 x.iter().zip(y.iter()).map(|(x, y)| (*x, base - *y / 2.0)),
                 base,
-                &DARK_BLUE,
+                DARK_BLUE,
             ))
             .unwrap();
     }

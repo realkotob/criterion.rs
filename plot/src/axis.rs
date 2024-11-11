@@ -1,7 +1,6 @@
 //! Coordinate axis
 
 use std::borrow::Cow;
-use std::iter::IntoIterator;
 
 use crate::map;
 use crate::traits::{Configure, Data, Set};
@@ -140,7 +139,7 @@ where
 
         let pairs = positions
             .into_iter()
-            .zip(labels.into_iter())
+            .zip(labels)
             .map(|(pos, label)| format!("'{}' {}", label.as_ref(), pos.f64()))
             .collect::<Vec<_>>();
 

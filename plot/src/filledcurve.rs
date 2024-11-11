@@ -1,7 +1,6 @@
 //! Filled curve plots
 
 use std::borrow::Cow;
-use std::iter::IntoIterator;
 
 use crate::data::Matrix;
 use crate::traits::{self, Data, Set};
@@ -133,7 +132,7 @@ where
         let (x_factor, y_factor) =
             crate::scale_factor(&self.axes, props.axes.unwrap_or(crate::Axes::BottomXLeftY));
 
-        let data = Matrix::new(izip!(x, y1, y2), (x_factor, y_factor, y_factor));
+        let data = Matrix::new(itertools::izip!(x, y1, y2), (x_factor, y_factor, y_factor));
         self.plots.push(Plot::new(data, &props));
         self
     }

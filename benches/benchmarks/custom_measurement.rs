@@ -1,8 +1,9 @@
 use criterion::{
-    black_box, criterion_group,
+    criterion_group,
     measurement::{Measurement, ValueFormatter},
     Criterion, Throughput,
 };
+use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 struct HalfSecFormatter;
@@ -14,7 +15,7 @@ impl ValueFormatter for HalfSecFormatter {
 
     fn format_throughput(&self, throughput: &Throughput, value: f64) -> String {
         match *throughput {
-            Throughput::Bytes(bytes) => {
+            Throughput::Bytes(bytes) | Throughput::BytesDecimal(bytes) => {
                 format!("{} b/s/2", (bytes as f64) / (value * 2f64 * 10f64.powi(-9)))
             }
             Throughput::Elements(elems) => format!(
@@ -39,16 +40,16 @@ impl ValueFormatter for HalfSecFormatter {
         values: &mut [f64],
     ) -> &'static str {
         match *throughput {
-            Throughput::Bytes(bytes) => {
+            Throughput::Bytes(bytes) | Throughput::BytesDecimal(bytes) => {
                 for val in values {
-                    *val = (bytes as f64) / (*val * 2f64 * 10f64.powi(-9))
+                    *val = (bytes as f64) / (*val * 2f64 * 10f64.powi(-9));
                 }
 
                 "b/s/2"
             }
             Throughput::Elements(elems) => {
                 for val in values {
-                    *val = (elems as f64) / (*val * 2f64 * 10f64.powi(-9))
+                    *val = (elems as f64) / (*val * 2f64 * 10f64.powi(-9));
                 }
 
                 "elem/s/2"
@@ -103,7 +104,7 @@ fn fibonacci_slow(n: u64) -> u64 {
 
 fn fibonacci_cycles(criterion: &mut Criterion<HalfSeconds>) {
     criterion.bench_function("fibonacci_custom_measurement", |bencher| {
-        bencher.iter(|| fibonacci_slow(black_box(10)))
+        bencher.iter(|| fibonacci_slow(black_box(10)));
     });
 }
 
