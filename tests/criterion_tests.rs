@@ -1,11 +1,7 @@
-#![allow(deprecated)]
-
-use criterion;
-use serde_json;
-
+#[cfg(feature = "plotters")]
+use criterion::SamplingMode;
 use criterion::{
-    criterion_group, criterion_main, profiler::Profiler, BatchSize, Benchmark, BenchmarkId,
-    Criterion, Fun, ParameterizedBenchmark, SamplingMode, Throughput,
+    criterion_group, criterion_main, profiler::Profiler, BatchSize, BenchmarkId, Criterion,
 };
 use serde_json::value::Value;
 use std::cell::{Cell, RefCell};
@@ -33,7 +29,6 @@ fn short_benchmark(dir: &TempDir) -> Criterion {
         .warm_up_time(Duration::from_millis(250))
         .measurement_time(Duration::from_millis(500))
         .nresamples(2000)
-        .with_plots()
 }
 
 #[derive(Clone)]
@@ -57,7 +52,7 @@ impl Default for Counter {
     }
 }
 
-fn verify_file(dir: &PathBuf, path: &str) -> PathBuf {
+fn verify_file(dir: &Path, path: &str) -> PathBuf {
     let full_path = dir.join(path);
     assert!(
         full_path.is_file(),
@@ -69,33 +64,36 @@ fn verify_file(dir: &PathBuf, path: &str) -> PathBuf {
     full_path
 }
 
-fn verify_json(dir: &PathBuf, path: &str) {
+fn verify_json(dir: &Path, path: &str) {
     let full_path = verify_file(dir, path);
     let f = File::open(full_path).unwrap();
     serde_json::from_reader::<File, Value>(f).unwrap();
 }
 
-fn verify_svg(dir: &PathBuf, path: &str) {
+#[cfg(feature = "html_reports")]
+fn verify_svg(dir: &Path, path: &str) {
     verify_file(dir, path);
 }
 
-fn verify_html(dir: &PathBuf, path: &str) {
+#[cfg(feature = "html_reports")]
+fn verify_html(dir: &Path, path: &str) {
     verify_file(dir, path);
 }
 
-fn verify_stats(dir: &PathBuf, baseline: &str) {
-    verify_json(&dir, &format!("{}/estimates.json", baseline));
-    verify_json(&dir, &format!("{}/sample.json", baseline));
-    verify_json(&dir, &format!("{}/tukey.json", baseline));
-    verify_json(&dir, &format!("{}/benchmark.json", baseline));
-    verify_file(&dir, &format!("{}/raw.csv", baseline));
+fn verify_stats(dir: &Path, baseline: &str) {
+    verify_json(dir, &format!("{}/estimates.json", baseline));
+    verify_json(dir, &format!("{}/sample.json", baseline));
+    verify_json(dir, &format!("{}/tukey.json", baseline));
+    verify_json(dir, &format!("{}/benchmark.json", baseline));
+    #[cfg(feature = "csv_output")]
+    verify_file(dir, &format!("{}/raw.csv", baseline));
 }
 
-fn verify_not_exists(dir: &PathBuf, path: &str) {
+fn verify_not_exists(dir: &Path, path: &str) {
     assert!(!dir.join(path).exists());
 }
 
-fn latest_modified(dir: &PathBuf) -> SystemTime {
+fn latest_modified(dir: &Path) -> SystemTime {
     let mut newest_update: Option<SystemTime> = None;
     for entry in WalkDir::new(dir) {
         let entry = entry.unwrap();
@@ -164,7 +162,7 @@ fn test_retain_baseline() {
     let pre_modified = latest_modified(&dir.path().join("test_retain_baseline/some-baseline"));
 
     short_benchmark(&dir)
-        .retain_baseline("some-baseline".to_owned())
+        .retain_baseline("some-baseline".to_owned(), true)
         .bench_function("test_retain_baseline", |b| b.iter(|| 10));
 
     let post_modified = latest_modified(&dir.path().join("test_retain_baseline/some-baseline"));
@@ -174,11 +172,18 @@ fn test_retain_baseline() {
 
 #[test]
 #[should_panic(expected = "Baseline 'some-baseline' must exist before comparison is allowed")]
-fn test_compare_baseline() {
-    // Initial benchmark to populate
+fn test_compare_baseline_strict_panics_when_missing_baseline() {
     let dir = temp_dir();
     short_benchmark(&dir)
-        .retain_baseline("some-baseline".to_owned())
+        .retain_baseline("some-baseline".to_owned(), true)
+        .bench_function("test_compare_baseline", |b| b.iter(|| 10));
+}
+
+#[test]
+fn test_compare_baseline_lenient_when_missing_baseline() {
+    let dir = temp_dir();
+    short_benchmark(&dir)
+        .retain_baseline("some-baseline".to_owned(), false)
         .bench_function("test_compare_baseline", |b| b.iter(|| 10));
 }
 
@@ -192,7 +197,7 @@ fn test_sample_size() {
         .sample_size(50)
         .bench_function("test_sample_size", move |b| {
             clone.count();
-            b.iter(|| 10)
+            b.iter(|| 10);
         });
 
     // This function will be called more than sample_size times because of the
@@ -210,7 +215,7 @@ fn test_warmup_time() {
         .warm_up_time(Duration::from_millis(100))
         .bench_function("test_warmup_time_1", move |b| {
             clone.count();
-            b.iter(|| 10)
+            b.iter(|| 10);
         });
 
     let counter2 = Counter::default();
@@ -219,7 +224,7 @@ fn test_warmup_time() {
         .warm_up_time(Duration::from_millis(2000))
         .bench_function("test_warmup_time_2", move |b| {
             clone.count();
-            b.iter(|| 10)
+            b.iter(|| 10);
         });
 
     assert!(counter1.read() < counter2.read());
@@ -251,27 +256,6 @@ fn test_bench_function() {
 }
 
 #[test]
-fn test_bench_functions() {
-    let dir = temp_dir();
-    let function_1 = Fun::new("times 10", |b, i| b.iter(|| *i * 10));
-    let function_2 = Fun::new("times 20", |b, i| b.iter(|| *i * 20));
-
-    let functions = vec![function_1, function_2];
-
-    short_benchmark(&dir).bench_functions("test_bench_functions", functions, 20);
-}
-
-#[test]
-fn test_bench_function_over_inputs() {
-    let dir = temp_dir();
-    short_benchmark(&dir).bench_function_over_inputs(
-        "test_bench_function_over_inputs",
-        |b, i| b.iter(|| *i * 10),
-        vec![100, 1000],
-    );
-}
-
-#[test]
 fn test_filtering() {
     let dir = temp_dir();
     let counter = Counter::default();
@@ -288,82 +272,62 @@ fn test_filtering() {
 #[test]
 fn test_timing_loops() {
     let dir = temp_dir();
-    short_benchmark(&dir).bench(
-        "test_timing_loops",
-        Benchmark::new("iter", |b| b.iter(|| 10))
-            .with_function("iter_with_setup", |b| {
-                b.iter_with_setup(|| vec![10], |v| v[0])
-            })
-            .with_function("iter_with_large_setup", |b| {
-                b.iter_with_large_setup(|| vec![10], |v| v[0])
-            })
-            .with_function("iter_with_large_drop", |b| {
-                b.iter_with_large_drop(|| vec![10; 100])
-            })
-            .with_function("iter_batched_small", |b| {
-                b.iter_batched(|| vec![10], |v| v[0], BatchSize::SmallInput)
-            })
-            .with_function("iter_batched_large", |b| {
-                b.iter_batched(|| vec![10], |v| v[0], BatchSize::LargeInput)
-            })
-            .with_function("iter_batched_per_iteration", |b| {
-                b.iter_batched(|| vec![10], |v| v[0], BatchSize::PerIteration)
-            })
-            .with_function("iter_batched_one_batch", |b| {
-                b.iter_batched(|| vec![10], |v| v[0], BatchSize::NumBatches(1))
-            })
-            .with_function("iter_batched_10_iterations", |b| {
-                b.iter_batched(|| vec![10], |v| v[0], BatchSize::NumIterations(10))
-            })
-            .with_function("iter_batched_ref_small", |b| {
-                b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::SmallInput)
-            })
-            .with_function("iter_batched_ref_large", |b| {
-                b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::LargeInput)
-            })
-            .with_function("iter_batched_ref_per_iteration", |b| {
-                b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::PerIteration)
-            })
-            .with_function("iter_batched_ref_one_batch", |b| {
-                b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::NumBatches(1))
-            })
-            .with_function("iter_batched_ref_10_iterations", |b| {
-                b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::NumIterations(10))
-            }),
-    );
-}
-
-#[test]
-fn test_throughput() {
-    let dir = temp_dir();
-    short_benchmark(&dir).bench(
-        "test_throughput_bytes",
-        Benchmark::new("strlen", |b| b.iter(|| "foo".len())).throughput(Throughput::Bytes(3)),
-    );
-    short_benchmark(&dir).bench(
-        "test_throughput_elems",
-        ParameterizedBenchmark::new(
-            "veclen",
-            |b, v| b.iter(|| v.len()),
-            vec![vec![1], vec![1, 2, 3]],
-        )
-        .throughput(|v| Throughput::Elements(v.len() as u64)),
-    );
+    let mut c = short_benchmark(&dir);
+    let mut group = c.benchmark_group("test_timing_loops");
+    group.bench_function("iter_with_setup", |b| {
+        b.iter_with_setup(|| vec![10], |v| v[0]);
+    });
+    group.bench_function("iter_with_large_setup", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::NumBatches(1));
+    });
+    group.bench_function("iter_with_large_drop", |b| {
+        b.iter_with_large_drop(|| vec![10; 100]);
+    });
+    group.bench_function("iter_batched_small", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::SmallInput);
+    });
+    group.bench_function("iter_batched_large", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::LargeInput);
+    });
+    group.bench_function("iter_batched_per_iteration", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::PerIteration);
+    });
+    group.bench_function("iter_batched_one_batch", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::NumBatches(1));
+    });
+    group.bench_function("iter_batched_10_iterations", |b| {
+        b.iter_batched(|| vec![10], |v| v[0], BatchSize::NumIterations(10));
+    });
+    group.bench_function("iter_batched_ref_small", |b| {
+        b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::SmallInput);
+    });
+    group.bench_function("iter_batched_ref_large", |b| {
+        b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::LargeInput);
+    });
+    group.bench_function("iter_batched_ref_per_iteration", |b| {
+        b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::PerIteration);
+    });
+    group.bench_function("iter_batched_ref_one_batch", |b| {
+        b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::NumBatches(1));
+    });
+    group.bench_function("iter_batched_ref_10_iterations", |b| {
+        b.iter_batched_ref(|| vec![10], |v| v[0], BatchSize::NumIterations(10));
+    });
 }
 
 // Verify that all expected output files are present
+#[cfg(feature = "plotters")]
 #[test]
 fn test_output_files() {
     let tempdir = temp_dir();
     // Run benchmarks twice to produce comparisons
     for _ in 0..2 {
-        short_benchmark(&tempdir).bench(
-            "test_output",
-            Benchmark::new("output_1", |b| b.iter(|| 10))
-                .with_function("output_2", |b| b.iter(|| 20))
-                .with_function("output_\\/*\"?", |b| b.iter(|| 30))
-                .sampling_mode(SamplingMode::Linear),
-        );
+        let mut c = short_benchmark(&tempdir);
+        let mut group = c.benchmark_group("test_output");
+        group.sampling_mode(SamplingMode::Linear);
+        group.bench_function("output_1", |b| b.iter(|| 10));
+        group.bench_function("output_2", |b| b.iter(|| 20));
+        group.bench_function("output_\\/*\"?", |b| b.iter(|| 30));
     }
 
     // For each benchmark, assert that the expected files are present.
@@ -379,7 +343,8 @@ fn test_output_files() {
         verify_stats(&dir, "base");
         verify_json(&dir, "change/estimates.json");
 
-        if short_benchmark(&tempdir).can_plot() {
+        #[cfg(feature = "html_reports")]
+        {
             verify_svg(&dir, "report/MAD.svg");
             verify_svg(&dir, "report/mean.svg");
             verify_svg(&dir, "report/median.svg");
@@ -402,8 +367,9 @@ fn test_output_files() {
         }
     }
 
-    // Check for overall report files
-    if short_benchmark(&tempdir).can_plot() {
+    #[cfg(feature = "html_reports")]
+    {
+        // Check for overall report files
         let dir = tempdir.path().join("test_output");
 
         verify_svg(&dir, "report/violin.svg");
@@ -412,22 +378,24 @@ fn test_output_files() {
 
     // Run the final summary process and check for the report that produces
     short_benchmark(&tempdir).final_summary();
-    if short_benchmark(&tempdir).can_plot() {
-        let dir = tempdir.path().to_owned();
 
+    #[cfg(feature = "html_reports")]
+    {
+        let dir = tempdir.path().to_owned();
         verify_html(&dir, "report/index.html");
     }
 }
 
+#[cfg(feature = "plotters")]
 #[test]
 fn test_output_files_flat_sampling() {
     let tempdir = temp_dir();
     // Run benchmark twice to produce comparisons
     for _ in 0..2 {
-        short_benchmark(&tempdir).bench(
-            "test_output",
-            Benchmark::new("output_flat", |b| b.iter(|| 10)).sampling_mode(SamplingMode::Flat),
-        );
+        let mut c = short_benchmark(&tempdir);
+        let mut group = c.benchmark_group("test_output");
+        group.sampling_mode(SamplingMode::Flat);
+        group.bench_function("output_flat", |b| b.iter(|| 10));
     }
 
     let dir = tempdir.path().join("test_output/output_flat");
@@ -436,7 +404,8 @@ fn test_output_files_flat_sampling() {
     verify_stats(&dir, "base");
     verify_json(&dir, "change/estimates.json");
 
-    if short_benchmark(&tempdir).can_plot() {
+    #[cfg(feature = "html_reports")]
+    {
         verify_svg(&dir, "report/MAD.svg");
         verify_svg(&dir, "report/mean.svg");
         verify_svg(&dir, "report/median.svg");
@@ -462,7 +431,7 @@ fn test_output_files_flat_sampling() {
 #[should_panic(expected = "Benchmark function must call Bencher::iter or related method.")]
 fn test_bench_with_no_iteration_panics() {
     let dir = temp_dir();
-    short_benchmark(&dir).bench("test_no_iter", Benchmark::new("no_iter", |_b| {}));
+    short_benchmark(&dir).bench_function("no_iter", |_b| {});
 }
 
 #[test]
@@ -492,12 +461,12 @@ fn test_criterion_doesnt_panic_if_measured_time_is_zero() {
     let dir = temp_dir();
     let mut c = short_benchmark(&dir);
     c.bench_function("zero_time", |bencher| {
-        bencher.iter_custom(|_iters| Duration::new(0, 0))
+        bencher.iter_custom(|_iters| Duration::new(0, 0));
     });
 }
 
 mod macros {
-    use super::{criterion, criterion_group, criterion_main};
+    use super::{criterion_group, criterion_main, Criterion};
 
     #[test]
     #[should_panic(expected = "group executed")]
@@ -525,15 +494,13 @@ mod macros {
 
         // silence dead_code warning
         if false {
-            main()
+            main();
         }
     }
 
     #[test]
     #[should_panic(expected = "group executed")]
     fn criterion_group() {
-        use self::criterion::Criterion;
-
         fn group(_crit: &mut Criterion) {}
         fn group2(_crit: &mut Criterion) {
             panic!("group executed");
@@ -547,8 +514,6 @@ mod macros {
     #[test]
     #[should_panic(expected = "group executed")]
     fn criterion_group_trailing_comma() {
-        use self::criterion::Criterion;
-
         fn group(_crit: &mut Criterion) {}
         fn group2(_crit: &mut Criterion) {
             panic!("group executed");

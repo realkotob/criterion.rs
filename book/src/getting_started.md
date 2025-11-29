@@ -6,7 +6,7 @@ I'll assume that we have a crate, `mycrate`, whose `lib.rs` contains the followi
 
 ```rust
 #[inline]
-fn fibonacci(n: u64) -> u64 {
+pub fn fibonacci(n: u64) -> u64 {
     match n {
         0 => 1,
         1 => 1,
@@ -21,7 +21,7 @@ To enable Criterion.rs benchmarks, add the following to your `Cargo.toml` file:
 
 ```toml
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.5.1"
 
 [[bench]]
 name = "my_benchmark"
@@ -39,10 +39,11 @@ file at `$PROJECT/benches/my_benchmark.rs` with the following contents (see the 
 below for an explanation of this code):
 
 ```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use mycrate::fibonacci;
 
-pub fn criterion_benchmark(c: &mut Criterion) {
+fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib 20", |b| b.iter(|| fibonacci(black_box(20))));
 }
 
@@ -78,7 +79,8 @@ median [25.733 us 25.988 us] med. abs. dev. [234.09 ns 544.07 ns]
 Let's go back and walk through that benchmark code in more detail.
 
 ```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use mycrate::fibonacci;
 ```
 

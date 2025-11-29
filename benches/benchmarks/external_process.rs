@@ -14,7 +14,6 @@ fn create_command() -> Command {
     command
 }
 
-#[allow(deprecated)]
 fn python_fibonacci(c: &mut Criterion) {
     let has_python3 = Command::new("python3")
         .arg("--version")
@@ -24,7 +23,7 @@ fn python_fibonacci(c: &mut Criterion) {
         .is_ok();
 
     if has_python3 {
-        let process = create_command()
+        let mut process = create_command()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -32,9 +31,11 @@ fn python_fibonacci(c: &mut Criterion) {
 
         let mut stdin = process
             .stdin
+            .take()
             .expect("Unable to get stdin for child process");
         let stdout = process
             .stdout
+            .take()
             .expect("Unable to get stdout for child process");
         let mut stdout = BufReader::new(stdout);
         c.bench_function("fibonacci-python", |b| {
@@ -48,10 +49,11 @@ fn python_fibonacci(c: &mut Criterion) {
                 let nanoseconds: u64 =
                     u64::from_str(line.trim()).expect("Unable to parse time from child process");
                 Duration::from_nanos(nanoseconds)
-            })
+            });
         });
 
         // Ensure that your child process terminates itself gracefully!
+        process.kill().expect("Unable to kill child process");
     }
 }
 

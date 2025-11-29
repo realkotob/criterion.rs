@@ -1,5 +1,5 @@
 use crate::stats::float::Float;
-use cast::{self, usize};
+use cast::usize;
 
 /// A "view" into the percentiles of a sample
 pub struct Percentiles<A>(Box<[A]>)
@@ -20,7 +20,7 @@ where
     unsafe fn at_unchecked(&self, p: A) -> A {
         let _100 = A::cast(100);
         debug_assert!(p >= A::cast(0) && p <= _100);
-        debug_assert!(self.0.len() > 0);
+        debug_assert!(!self.0.is_empty());
         let len = self.0.len() - 1;
 
         if p == _100 {
@@ -47,34 +47,30 @@ where
         let _100 = A::cast(100);
 
         assert!(p >= _0 && p <= _100);
-        assert!(self.0.len() > 0);
+        assert!(!self.0.is_empty());
 
         unsafe { self.at_unchecked(p) }
     }
 
     /// Returns the interquartile range
     pub fn iqr(&self) -> A {
-        unsafe {
-            let q1 = self.at_unchecked(A::cast(25));
-            let q3 = self.at_unchecked(A::cast(75));
+        let q1 = self.at(A::cast(25));
+        let q3 = self.at(A::cast(75));
 
-            q3 - q1
-        }
+        q3 - q1
     }
 
     /// Returns the 50th percentile
     pub fn median(&self) -> A {
-        unsafe { self.at_unchecked(A::cast(50)) }
+        self.at(A::cast(50))
     }
 
     /// Returns the 25th, 50th and 75th percentiles
     pub fn quartiles(&self) -> (A, A, A) {
-        unsafe {
-            (
-                self.at_unchecked(A::cast(25)),
-                self.at_unchecked(A::cast(50)),
-                self.at_unchecked(A::cast(75)),
-            )
-        }
+        (
+            self.at(A::cast(25)),
+            self.at(A::cast(50)),
+            self.at(A::cast(75)),
+        )
     }
 }

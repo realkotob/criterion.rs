@@ -26,7 +26,7 @@ use super::{PlotContext, PlotData, Plotter};
 use crate::format;
 
 fn gnuplot_escape(string: &str) -> String {
-    string.replace("_", "\\_").replace("'", "''")
+    string.replace('_', "\\_").replace('\'', "''")
 }
 
 static DEFAULT_FONT: &str = "Helvetica";
@@ -49,20 +49,6 @@ fn debug_script(path: &Path, figure: &Figure) {
         if let Err(e) = result {
             error!("Failed to write debug output: {}", e);
         }
-    }
-}
-
-/// Private
-trait Append<T> {
-    /// Private
-    fn append_(self, item: T) -> Self;
-}
-
-// NB I wish this was in the standard library
-impl<T> Append<T> for Vec<T> {
-    fn append_(mut self, item: T) -> Vec<T> {
-        self.push(item);
-        self
     }
 }
 
@@ -248,7 +234,7 @@ impl Plotter for Gnuplot {
         info!(
             "Waiting for {} gnuplot processes took {}",
             child_count,
-            format::time(crate::DurationExt::to_nanos(elapsed) as f64)
+            format::time(elapsed.as_nanos() as f64)
         );
     }
 }
